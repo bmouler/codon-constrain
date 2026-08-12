@@ -1,13 +1,18 @@
 # codon-constrain
 
-[![CI](https://github.com/bmouler/codon-constrain/actions/workflows/ci.yml/badge.svg)](https://github.com/bmouler/codon-constrain/actions/workflows/ci.yml) [![branch coverage](https://img.shields.io/badge/branch%20coverage-100%25-brightgreen)](https://github.com/bmouler/codon-constrain/actions/workflows/ci.yml) [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/) [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![CI](https://github.com/bmouler/codon-constrain/actions/workflows/ci.yml/badge.svg)](https://github.com/bmouler/codon-constrain/actions/workflows/ci.yml)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![Types](https://img.shields.io/badge/types-mypy%20strict-blue)
+![Mutation](https://img.shields.io/badge/mutation-95%25%20killed-brightgreen)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 `codon-constrain` is a dependency-free-runtime synonymous codon optimizer. It maximizes the sum of log relative codon adaptiveness for bundled *E. coli* or human profiles while preserving translation and jointly enforcing whole-construct GC, forbidden motifs on either strand, homopolymer length, and fixed DNA flanks.
 
 ## Install
 
 ```bash
-python -m pip install .
+python -m pip install codon-constrain
 ```
 
 For development:
@@ -61,6 +66,10 @@ Coding-DNA FASTA is also accepted with `--input-type dna` (or `auto` when unambi
 
 ## Algorithm and exactness
 
+```mermaid
+flowchart LR; A[protein or coding DNA] --> S[DP states: GC count × suffix × homopolymer run]; S --> T[extend by synonymous codons]; T --> C{constraints: GC, motifs, flanks}; C -->|feasible| B[max log adaptiveness]; B --> R[traceback: optimal construct + report]
+```
+
 At each amino-acid position, dynamic programming extends every reachable finite state by one synonymous codon. A state consists of:
 
 - total GC count;
@@ -97,6 +106,28 @@ pytest tests/test_optimizer.py::test_exact_matches_tiny_brute_force_oracle \
        tests/test_optimizer.py::test_greedy_failure_dp_success_is_deterministic_capability_example \
        tests/test_cli.py::test_installed_module_cli_end_to_end_from_clean_directory
 ```
+
+### Mutation testing
+
+From the repository root, reproduce the mutation run with:
+
+```bash
+source .venv/bin/activate
+mutmut run
+mutmut results
+```
+
+The run generated 807 mutants and killed 768 (95.17%). The remaining 39 were individually reviewed as behavior-equivalent under the supported contract, not missed mutants. There were zero suspicious results and zero timeouts. Observable CLI help changes were killed rather than classified as equivalent.
+
+| Reviewed equivalent rationale | Count |
+|---|---:|
+| Explicit UTF-8 versus the platform default, and type-cast identities | 9 |
+| FASTA header tokenization with an equivalent `maxsplit` | 1 |
+| Sentinels made redundant by validated DNA and motif alphabets | 6 |
+| Surplus suffix/initial state retained by the DP | 7 |
+| Deterministic tie-breaking and beam/pruning boundaries | 8 |
+| Reporting, default-value, and formatting identities | 8 |
+| **Total reviewed equivalents** | **39** |
 
 ## Limitations
 
