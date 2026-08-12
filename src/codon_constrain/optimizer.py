@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from itertools import pairwise
+from typing import Literal, TypeAlias
+
+Host: TypeAlias = Literal["ecoli", "human"]
+InputType: TypeAlias = Literal["auto", "protein", "dna"]
 
 
 class OptimizationError(ValueError):
@@ -38,7 +42,7 @@ CODONS_BY_AA: dict[str, tuple[str, ...]] = {
 
 # Relative adaptiveness within each synonymous family. Values are normalized,
 # bundled host profiles; only ratios within an amino-acid family affect scores.
-HOST_WEIGHTS: dict[str, dict[str, float]] = {
+HOST_WEIGHTS: dict[Host, dict[str, float]] = {
     "ecoli": {
         "GCA": 0.52,
         "GCC": 0.70,
@@ -167,9 +171,9 @@ HOST_WEIGHTS: dict[str, dict[str, float]] = {
     },
 }
 
-CODON_TO_AA = {codon: aa for aa, codons in CODONS_BY_AA.items() for codon in codons}
-_DNA = frozenset("ACGT")
-_COMPLEMENT = str.maketrans("ACGT", "TGCA")
+CODON_TO_AA: dict[str, str] = {codon: aa for aa, codons in CODONS_BY_AA.items() for codon in codons}
+_DNA: frozenset[str] = frozenset("ACGT")
+_COMPLEMENT: Mapping[int, int | str | None] = str.maketrans("ACGT", "TGCA")
 
 
 @dataclass(frozen=True)
@@ -211,7 +215,9 @@ class GreedyResult:
 
 
 # state: GC count, bounded motif suffix, last base, homopolymer run
-_State = tuple[int, str, str, int]
+_State: TypeAlias = tuple[int, str, str, int]
+_Path: TypeAlias = tuple[float, str]
+_CompletePath: TypeAlias = tuple[float, str, _State]
 
 
 def reverse_complement(sequence: str) -> str:
@@ -242,7 +248,7 @@ def translate_dna(sequence: str) -> str:
     return "".join(amino_acids)
 
 
-def _protein_from_input(sequence: str, input_type: str) -> tuple[str, str | None]:
+def _protein_from_input(sequence: str, input_type: InputType) -> tuple[str, str | None]:
     cleaned = "".join(sequence.split()).upper()
     if not cleaned:
         raise OptimizationError("input sequence is empty")
@@ -333,7 +339,7 @@ def _violations(
 
 
 def greedy_optimize(
-    protein: str, host: str = "ecoli", constraints: Constraints | None = None
+    protein: str, host: Host = "ecoli", constraints: Constraints | None = None
 ) -> GreedyResult:
     """Build the unconstrained best-codon baseline, then assess constraints."""
 
@@ -355,9 +361,9 @@ def greedy_optimize(
 
 def optimize(
     sequence: str,
-    host: str = "ecoli",
+    host: Host = "ecoli",
     *,
-    input_type: str = "auto",
+    input_type: InputType = "auto",
     constraints: Constraints | None = None,
     beam_width: int | None = None,
 ) -> OptimizationResult:
@@ -392,10 +398,10 @@ def optimize(
 
     # Each state retains only the highest-scoring path; future feasibility and
     # score depend exclusively on this finite state, which establishes optimality.
-    paths: dict[_State, tuple[float, str]] = {flank_state: (0.0, "")}
+    paths: dict[_State, _Path] = {flank_state: (0.0, "")}
     weights = HOST_WEIGHTS[host]
     for position, amino_acid in enumerate(protein, start=1):
-        next_paths: dict[_State, tuple[float, str]] = {}
+        next_paths: dict[_State, _Path] = {}
         for state, (score, coding) in paths.items():
             for codon in CODONS_BY_AA[amino_acid]:
                 advanced = _advance(state, codon, motifs, suffix_limit, normalized.homopolymer_max)
@@ -419,7 +425,7 @@ def optimize(
             next_paths = dict(ranked[:beam_width])
         paths = next_paths
 
-    complete: list[tuple[float, str, _State]] = []
+    complete: list[_CompletePath] = []
     total_length = len(normalized.flank_5) + len(protein) * 3 + len(normalized.flank_3)
     gc_low, gc_high = _gc_count_bounds(total_length, normalized.gc_min, normalized.gc_max)
     terminal_constraint_failure = False

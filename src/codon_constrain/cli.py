@@ -6,8 +6,24 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import cast
 
-from .optimizer import Constraints, OptimizationError, optimize
+from .optimizer import Constraints, Host, InputType, OptimizationError, optimize
+
+
+class _Arguments(argparse.Namespace):
+    input: Path
+    output: Path
+    report: Path
+    host: Host
+    input_type: InputType
+    gc_min: float
+    gc_max: float
+    forbid: list[str]
+    homopolymer_max: int
+    flank_5: str
+    flank_3: str
+    beam_width: int | None
 
 
 def _read_fasta(path: Path) -> tuple[str, str]:
@@ -56,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     """Run the CLI, returning a process-compatible status code."""
 
     parser = _parser()
-    args = parser.parse_args(argv)
+    args = cast(_Arguments, parser.parse_args(argv))
     try:
         identifier, sequence = _read_fasta(args.input)
         constraints = Constraints(
