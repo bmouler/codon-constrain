@@ -400,21 +400,41 @@ def optimize(
     # score depend exclusively on this finite state, which establishes optimality.
     paths: dict[_State, _Path] = {flank_state: (0.0, "")}
     weights = HOST_WEIGHTS[host]
+    choices = {
+        amino_acid: tuple((codon, math.log(weights[codon])) for codon in codons)
+        for amino_acid, codons in CODONS_BY_AA.items()
+    }
+    # Codon feasibility depends on motif/homopolymer history, not accumulated
+    # GC, so cache that finite transition and add its GC delta to each path.
+    transition_cache: dict[tuple[str, str, int, str], tuple[int, str, str, int] | None] = {}
     for position, amino_acid in enumerate(protein, start=1):
         next_paths: dict[_State, _Path] = {}
         for state, (score, coding) in paths.items():
-            for codon in CODONS_BY_AA[amino_acid]:
-                advanced = _advance(state, codon, motifs, suffix_limit, normalized.homopolymer_max)
-                if advanced is None:
+            gc_count, suffix, last, run = state
+            for codon, codon_score in choices[amino_acid]:
+                transition_key = suffix, last, run, codon
+                transition = transition_cache.get(transition_key)
+                if transition is None and transition_key not in transition_cache:
+                    advanced = _advance(
+                        (0, suffix, last, run),
+                        codon,
+                        motifs,
+                        suffix_limit,
+                        normalized.homopolymer_max,
+                    )
+                    transition = transition_cache[transition_key] = advanced
+                if transition is None:
                     continue
-                candidate = (score + math.log(weights[codon]), coding + codon)
-                previous = next_paths.get(advanced)
-                if (
-                    previous is None
-                    or candidate[0] > previous[0]
-                    or (candidate[0] == previous[0] and candidate[1] < previous[1])
-                ):
-                    next_paths[advanced] = candidate
+                gc_delta, next_suffix, next_last, next_run = transition
+                advanced_state = gc_count + gc_delta, next_suffix, next_last, next_run
+                candidate_score = score + codon_score
+                previous = next_paths.get(advanced_state)
+                if previous is None or candidate_score > previous[0]:
+                    next_paths[advanced_state] = candidate_score, coding + codon
+                elif candidate_score == previous[0]:
+                    candidate_coding = coding + codon
+                    if candidate_coding < previous[1]:
+                        next_paths[advanced_state] = candidate_score, candidate_coding
         if not next_paths:
             raise OptimizationError(
                 f"infeasible after residue {position} ({amino_acid}): all synonymous "

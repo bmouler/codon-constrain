@@ -107,6 +107,22 @@ pytest tests/test_optimizer.py::test_exact_matches_tiny_brute_force_oracle \
        tests/test_cli.py::test_installed_module_cli_end_to_end_from_clean_directory
 ```
 
+### End-to-end performance
+
+`python benchmarks/benchmark_optimize.py --source-root . --samples 15 --warmups 3` runs the
+public exact optimizer for a 104-residue protein under a global GC range, four forbidden motifs,
+a homopolymer bound, and fixed flanks, then materializes `OptimizationResult` and serializes its
+complete dataclass payload for the checksum.
+
+On an Apple M3 Max with CPython 3.11.12 on 2026-08-15, frozen baseline `07a9b99fb702`
+measured **297.357 ms** median and the cached finite-state implementation **47.964 ms**, a
+**6.200x speedup** over 15 samples after three warmups. Both runs produced SHA-256
+`8e0e474a503df6747754560baa0cb9fb92b18ab09ece8b89f226cec781a2d7ff`. Fixture
+construction and interpreter startup are outside the timed region; exact search, constraint
+reporting, traceback, result materialization, and conservative checksum serialization are
+included. Use `--source-root` to point the
+same script at another worktree for a direct comparison.
+
 ### Mutation testing
 
 From the repository root, reproduce the mutation run with:

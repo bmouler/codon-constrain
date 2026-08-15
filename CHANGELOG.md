@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+- Cached codon scores and finite-state constraint transitions within each exact optimization while preserving optimality and deterministic tie-breaking.
+- Added a deterministic end-to-end constrained-optimization benchmark with exact result checksums.
+
+
 ## [1.0.0] - 2026-08-12
 
 First stable release.
